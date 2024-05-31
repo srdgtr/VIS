@@ -47,6 +47,7 @@ vooraad = (
             "GTIN Code": "ean",
             "Stock quantity": "stock",
             "Brand": "brand",
+            "Group": "group",
             "CostPriceExclVat": "price",
             "SalesPriceExclVatExclTax": "price_advice",
             "ProductDesc": "info",
@@ -58,7 +59,6 @@ vooraad = (
             float
         ),  # niet teveel aanbieden
         eigen_sku=lambda x: scraper_name + x["sku"].astype(str),
-        group = "",
         ean = lambda x: pd.to_numeric(x["ean"].fillna(x["Barcode"]), errors="coerce"),)
     .query("stock > 0")
     .query("ean == ean")

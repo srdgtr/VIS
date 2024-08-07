@@ -27,10 +27,12 @@ def get_latest_file():
 
         names = ftp.nlst()
         assortiment = [line for line in names if "Products" in line][0]
-        stock = [line for line in names if "Stock.xlsx" in line][0]
-
         with open(f"products_{date_now}.xlsx", "wb") as f:
             ftp.retrbinary("RETR " + assortiment, f.write)
+        
+        ftp.cwd("Stock")
+        names_sub = ftp.nlst()
+        stock = [line for line in names_sub if "Stock.xlsx" in line][0]
         with open(f"stock_{date_now}.xlsx", "wb") as f:
             ftp.retrbinary("RETR " + stock, f.write)
 
@@ -55,6 +57,7 @@ vooraad = (
         }
     )
     .assign(
+        sku=lambda x: x["sku"].astype(str).str.zfill(7),
         stock=lambda x: (np.where(pd.to_numeric(x["stock"].fillna(0)) > 6, 6, x["stock"])).astype(
             float
         ),  # niet teveel aanbieden

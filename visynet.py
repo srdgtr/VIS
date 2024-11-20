@@ -58,13 +58,14 @@ vooraad = (
     )
     .assign(
         sku=lambda x: x["sku"].astype(str).str.zfill(7),
-        stock=lambda x: (np.where(pd.to_numeric(x["stock"].fillna(0)) > 6, 6, x["stock"])).astype(
-            float
+        stock=lambda x: (np.where(pd.to_numeric(x["stock"].fillna(0)) > 15, 15, x["stock"])).astype(
+            int
         ),  # niet teveel aanbieden
         eigen_sku=lambda x: scraper_name + x["sku"].astype(str),
         ean = lambda x: pd.to_numeric(x["ean"].fillna(x["Barcode"]), errors="coerce"),)
     .query("stock > 0")
     .query("ean == ean")
+    .query("ean > 1000000000")
     .query("DeliveryDate != DeliveryDate") # alleen op voorraad
 )
 

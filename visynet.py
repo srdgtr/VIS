@@ -12,6 +12,10 @@ sys.path.insert(0, str(Path.cwd().parent))
 from bol_export_file import get_file
 from process_results.process_data import save_to_db, save_to_dropbox, save_to_dropbox_vendit
 
+from alle_producten_leveranciers.producten_data_leveranciers import (
+    save_products_to_db_all_table,
+)
+
 date_now = datetime.now().strftime("%c").replace(":", "-")
 
 ini_config = configparser.ConfigParser(interpolation=None)
@@ -38,7 +42,23 @@ def get_latest_file():
 
 get_latest_file()
 
-vooraad = (
+# load apd file for match missing ean on id
+apd = pd.read_csv(
+        max((Path.cwd().parent / "APD").glob(f"APD_*{date_now[-4:]}.csv"), key=os.path.getctime), usecols=["ean", "id"]
+    ).rename(columns={"ean":"apd_ean"})
+
+def process_barcode(barcode):
+    """Processes a single barcode."""
+    if pd.isna(barcode):
+        return np.nan
+
+    barcode = str(barcode).strip().replace(".", "")  # Correct: No regex keyword
+    if 10 <= len(barcode) <= 15:
+        barcode = barcode.lstrip('0')
+        return pd.to_numeric(barcode, errors="coerce")
+    return np.nan
+
+vooraad_info_all = (
     pd.read_excel(
         max(Path.cwd().glob("products*.xlsx"), key=os.path.getctime),
     )
@@ -46,7 +66,6 @@ vooraad = (
     .rename(
         columns={
             "ProductID": "sku",
-            "GTIN Code": "ean",
             "Stock quantity": "stock",
             "Brand": "brand",
             "Group": "group",
@@ -58,19 +77,31 @@ vooraad = (
     )
     .assign(
         sku=lambda x: x["sku"].astype(str).str.zfill(7),
-        stock=lambda x: (np.where(pd.to_numeric(x["stock"].fillna(0)) > 15, 15, x["stock"])).astype(
-            int
-        ),  # niet teveel aanbieden
+        stock=lambda x: np.clip(pd.to_numeric(x["stock"].fillna(0), errors='coerce'), 0, 15).astype(int),  # niet teveel aanbieden
         eigen_sku=lambda x: scraper_name + x["sku"].astype(str),
-        ean = lambda x: pd.to_numeric(x["ean"].fillna(x["Barcode"]), errors="coerce"),)
-    .query("stock > 0")
+        id=lambda x: x["id"].astype(str).str.strip(),
+    )
+    .merge(apd, how="left", on= "id") # first a cleanup of id is needed
+    .assign(
+        ean=lambda x: (
+            x["Barcode"].apply(process_barcode)
+            .fillna(x["Barcode2"].apply(process_barcode))
+            .fillna(x["Barcode3"].apply(process_barcode))
+            .fillna(x["Barcode4"].apply(process_barcode))
+            .fillna(x["apd_ean"].apply(process_barcode))
+        )
+    )
     .query("ean == ean")
     .query("ean > 1000000000")
     .query("DeliveryDate != DeliveryDate") # alleen op voorraad
 )
+save_products_to_db_all_table(
+    vooraad_info_all[["sku", "ean", "price", "stock","info"]], scraper_name
+)
+vooraad_info = vooraad_info_all.query("stock > 0").query("not (group.str.strip() == 'KOELING' and Subgroup.str.strip() == 'ACCESSOIRES')")
 
 
-vooraad_info = vooraad[
+vooraad_info = vooraad_info[
     ["sku", "ean", "brand", "stock", "price", "price_advice", "info", "id","group"]
 ]
 
